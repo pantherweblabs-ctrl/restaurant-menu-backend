@@ -68,7 +68,7 @@ app.use('/api/', limiter);
 
 // Routes
 app.use('/api/menu', require('./routes/menu'));
-app.use('/api/visitors', require('./routes/visitors-direct'));
+app.use('/api/visitors', require('./routes/visitors')); // Using Supabase client instead of direct PostgreSQL
 app.use('/api/orders', require('./routes/orders'));
 
 // Health check

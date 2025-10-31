@@ -5,9 +5,18 @@ const Joi = require('joi');
 const { parsePhoneNumberFromString } = require('libphonenumber-js');
 
 // Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+    console.error('Missing Supabase credentials!');
+    console.error('SUPABASE_URL:', supabaseUrl ? 'Set' : 'Missing');
+    console.error('SUPABASE_SERVICE_ROLE_KEY:', supabaseKey ? 'Set' : 'Missing');
+}
+
 const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
+    supabaseUrl || 'https://yjynnclmzueqxitqszdt.supabase.co',
+    supabaseKey || ''
 );
 
 // Validation schemas
@@ -81,11 +90,16 @@ router.post('/', async (req, res) => {
         const normalizedPhone = normalizePhone(value.phone);
 
         // Check if visitor already exists
-        const { data: existingVisitor } = await supabase
+        const { data: existingVisitor, error: checkError } = await supabase
             .from('visitors')
             .select('*')
             .eq('phone', normalizedPhone)
-            .single();
+            .maybeSingle();
+
+        // If there's an error checking (like table doesn't exist), log it but continue
+        if (checkError && checkError.code !== 'PGRST116') {
+            console.warn('Error checking existing visitor:', checkError);
+        }
 
         if (existingVisitor) {
             // Return existing visitor data instead of error
@@ -115,10 +129,22 @@ router.post('/', async (req, res) => {
         });
     } catch (error) {
         console.error('Error creating visitor:', error);
+        console.error('Error details:', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+        });
+        
+        // Return more detailed error in development
+        const errorMessage = process.env.NODE_ENV === 'development' 
+            ? error.message 
+            : 'Failed to create visitor';
+            
         res.status(500).json({
             success: false,
             error: 'Failed to create visitor',
-            message: error.message
+            message: errorMessage
         });
     }
 });
