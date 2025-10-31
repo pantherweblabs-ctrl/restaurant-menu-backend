@@ -21,12 +21,12 @@ const supabase = createClient(
 
 // Validation schemas
 const visitorSchema = Joi.object({
-    name: Joi.string().min(2).max(100).required(),
-    phone: Joi.string().required(),
+    name: Joi.string().min(2).max(100).trim().required(),
+    phone: Joi.string().required().min(10).max(15),
     opted_in: Joi.boolean().default(true),
-    source: Joi.string().valid('website', 'menu', 'referral', 'walk-in', 'other').optional(),
-    notes: Joi.string().max(500).optional()
-});
+    source: Joi.string().valid('website', 'menu', 'referral', 'walk-in', 'other').default('menu'),
+    notes: Joi.string().max(500).allow('').optional().default('')
+}).unknown(false); // Reject unknown fields
 
 const messageLogSchema = Joi.object({
     visitor_id: Joi.number().integer().required(),
@@ -36,15 +36,45 @@ const messageLogSchema = Joi.object({
     admin: Joi.string().optional()
 });
 
-// Helper function to normalize phone number
+// Helper function to normalize phone number - extract only 10-digit Indian number
 function normalizePhone(phone, defaultCountry = 'IN') {
+    if (!phone || typeof phone !== 'string') {
+        return '';
+    }
+    
     try {
-        const parsed = parsePhoneNumberFromString(phone, defaultCountry) || 
-                      parsePhoneNumberFromString(phone);
-        return parsed ? parsed.number : phone.replace(/\s+/g, '');
+        // Extract only digits
+        let cleaned = phone.replace(/\D/g, '');
+        
+        if (!cleaned || cleaned.length === 0) {
+            return '';
+        }
+        
+        // If it's 13 digits and starts with 91, remove the 91
+        if (cleaned.length === 13 && cleaned.startsWith('91')) {
+            cleaned = cleaned.substring(2);
+        }
+        // If it's 12 digits and starts with 91, remove the 91
+        else if (cleaned.length === 12 && cleaned.startsWith('91')) {
+            cleaned = cleaned.substring(2);
+        }
+        // If it's 11 digits and starts with 1, remove the 1
+        else if (cleaned.length === 11 && cleaned.startsWith('1')) {
+            cleaned = cleaned.substring(1);
+        }
+        // If it's 10 digits, keep as is
+        else if (cleaned.length === 10) {
+            // Already correct
+        }
+        // If it's more than 10 digits, take the last 10
+        else if (cleaned.length > 10) {
+            cleaned = cleaned.slice(-10);
+        }
+        
+        return cleaned || '';
     } catch (error) {
         console.error('Phone normalization error:', error);
-        return phone.replace(/\s+/g, '');
+        return phone.replace(/\D/g, '').slice(-10) || '';
     }
 }
 
@@ -76,12 +106,22 @@ router.get('/', async (req, res) => {
 // POST /api/visitors - Create new visitor
 router.post('/', async (req, res) => {
     try {
+        // Log incoming request for debugging
+        console.log('Received visitor data:', JSON.stringify(req.body, null, 2));
+        
         // Validate input
-        const { error: validationError, value } = visitorSchema.validate(req.body);
+        const { error: validationError, value } = visitorSchema.validate(req.body, {
+            abortEarly: false,
+            allowUnknown: false,
+            stripUnknown: true
+        });
+        
         if (validationError) {
+            console.error('Validation error details:', validationError.details);
             return res.status(400).json({
                 success: false,
                 error: 'Validation error',
+                message: validationError.details.map(d => d.message).join(', '),
                 details: validationError.details
             });
         }
