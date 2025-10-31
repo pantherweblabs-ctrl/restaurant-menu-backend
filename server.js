@@ -9,9 +9,13 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(morgan('combined'));
-app.use(cors({
+
+// CORS configuration
+const corsOptions = {
     origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
@@ -23,15 +27,34 @@ app.use(cors({
         // Add default origins for development
         allowedOrigins.push('http://localhost:3000', 'http://127.0.0.1:3000', 'file://', 'null');
         
+        // Log for debugging
+        console.log('CORS check - Origin:', origin);
+        console.log('CORS check - Allowed origins:', allowedOrigins);
+        
         if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
-            console.log('CORS blocked origin:', origin);
-            callback(new Error('Not allowed by CORS'));
+            console.log('CORS check - Origin not in allowed list:', origin);
+            // Allow Vercel deployments (check if origin contains vercel.app)
+            if (origin && origin.includes('vercel.app')) {
+                console.log('Allowing Vercel origin:', origin);
+                callback(null, true);
+            } else {
+                // For now, allow all origins to prevent CORS issues
+                // TODO: Restrict this to specific domains in production
+                console.log('Allowing origin (temporary):', origin);
+                callback(null, true);
+            }
         }
     },
-    credentials: true
-}));
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
